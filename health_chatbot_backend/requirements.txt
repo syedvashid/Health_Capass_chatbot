@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+langchain-ollama
+python-dotenv
+mysql-connector-python
+reportlab
+pydantic
+langchain
