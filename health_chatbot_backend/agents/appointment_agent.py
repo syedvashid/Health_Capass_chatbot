@@ -15,7 +15,8 @@ from services.database_service import location_based_doctor_search, get_doctor_b
 from models.request_models import ChatRequest,HistoryRequest
 # Agentic System Prompts for Appointment Flow
 from models.prompts import (
-    LOCATION_COLLECTION_PROMPT, ENHANCED_DOCTOR_DISPLAY_PROMPT,DEPARTMENT_PROMPT ,DOCTOR_SELECTION_PROMPT,SLOT_AVAILABILITY_PROMPT
+    LOCATION_COLLECTION_PROMPT, ENHANCED_DOCTOR_DISPLAY_PROMPT,DEPARTMENT_PROMPT ,DOCTOR_SELECTION_PROMPT,SLOT_AVAILABILITY_PROMPT,SLOT_SELECTION_PROMPT,
+    BOOKING_CONFIRMATION_PROMPT, FINAL_BOOKING_CONFIRMATION_PROMPT
 )
 
 def extract_user_preferences(user_input: str) -> dict:
@@ -287,55 +288,31 @@ def get_selected_doctor_from_history(conversation_history: List[Dict[str, str]])
                 continue
     return None
 
-def get_appointment_booking_state(conversation_history: List[Dict[str, str]]) -> dict:
-    """Get current state of appointment booking process"""
-    print("Function: get_appointment_booking_state")
+def get_updated_appointment_booking_state(conversation_history: List[Dict[str, str]]) -> dict:
+    """Get enhanced appointment booking state with slot selection"""
+    print("Function: get_updated_appointment_booking_state")
     
     state = {
-        "step": "doctor_selection",  # doctor_selection, slot_selection, confirmation
+        "step": "doctor_selection",
         "selected_doctor_id": None,
-        "selected_date": None,
-        "selected_time": None
+        "selected_slot": None,
+        "ready_for_confirmation": False
     }
     
     # Check for selected doctor
     state["selected_doctor_id"] = get_selected_doctor_from_history(conversation_history)
     
-    # Check for selected date/time in recent messages
-    for msg in reversed(conversation_history[-5:]):  # Check last 5 messages
-        content = msg.get("content", "").lower()
-        
-        # Look for date selections
-        import re
-        date_patterns = [
-            r'(\d{4}-\d{2}-\d{2})',  # YYYY-MM-DD
-            r'(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}',
-            r'(monday|tuesday|wednesday|thursday|friday|saturday|sunday)'
-        ]
-        
-        for pattern in date_patterns:
-            if re.search(pattern, content, re.IGNORECASE):
-                # Extract date info (simplified)
-                pass
-        
-        # Look for time selections
-        time_patterns = [
-            r'(\d{1,2}:\d{2}\s*(?:am|pm))',
-            r'(\d{1,2}\s*(?:am|pm))'
-        ]
-        
-        for pattern in time_patterns:
-            if re.search(pattern, content, re.IGNORECASE):
-                # Extract time info (simplified)
-                pass
+    # Check for selected slot
+    state["selected_slot"] = get_selected_slot_from_history(conversation_history)
     
     # Determine current step
     if not state["selected_doctor_id"]:
         state["step"] = "doctor_selection"
-    elif not state["selected_date"] or not state["selected_time"]:
+    elif not state["selected_slot"]:
         state["step"] = "slot_selection"
     else:
         state["step"] = "confirmation"
+        state["ready_for_confirmation"] = True
     
     return state
 
@@ -358,7 +335,7 @@ async def handle_doctor_selection(request: ChatRequest, doctors_list: list):
             doctor = await get_doctor_by_id(selected_doctor_id)
             
             # Move to slot selection
-            return await handle_slot_selection(request, doctor)
+            return await handle_slot_selection_with_confirmation(request, doctor)
         
         else:
             # No clear selection - ask for clarification
@@ -387,9 +364,9 @@ async def handle_doctor_selection(request: ChatRequest, doctors_list: list):
         logger.error(f"Doctor selection error: {str(e)}")
         raise HTTPException(500, "Doctor selection failed")
 
-async def handle_slot_selection(request: ChatRequest, doctor: dict):
-    """Handle time slot selection for the chosen doctor"""
-    print(f"Function: handle_slot_selection - Doctor: {doctor['name']}")
+async def handle_slot_selection_with_confirmation(request: ChatRequest, doctor: dict):
+    """Enhanced slot selection that handles both showing slots and detecting selection"""
+    print(f"Function: handle_slot_selection_with_confirmation - Doctor: {doctor['name']}")
     
     try:
         # Get available slots for the doctor
@@ -400,40 +377,54 @@ async def handle_slot_selection(request: ChatRequest, doctor: dict):
                 "response": f"Sorry, Dr. {doctor['name']} doesn't have any available slots in the next 7 days. Please try selecting a different doctor or contact the clinic directly."
             }
         
-        # Format slots for LLM
-        slots_text = ""
-        for day_slot in available_slots:
-            slots_text += f"\n📅 **{day_slot['day_name']}, {day_slot['formatted_date']}**\n"
-            for slot in day_slot['slots']:
-                slots_text += f"   🕒 {slot['time']} - {slot['end_time']}\n"
+        # Check if user is selecting a slot
+        selected_slot = await extract_slot_selection_from_input(request.user_input, available_slots)
         
-        # Generate response
-        conv_history = "\n".join(
-            f"{msg['role'].upper()}: {msg['content']}"
-            for msg in request.conversation_history if msg['role'] != "system"
-        )
+        if selected_slot:
+            # User selected a slot - save to conversation history and show confirmation
+            request.conversation_history.append({
+                "role": "system",
+                "content": f"selected_slot: {json.dumps(selected_slot)}"
+            })
+            
+            # Move to confirmation step
+            return await handle_booking_confirmation(request, doctor, selected_slot)
         
-        prompt = ChatPromptTemplate.from_messages([
-            SystemMessagePromptTemplate.from_template(
-                SLOT_AVAILABILITY_PROMPT.format(
-                    doctor_name=doctor['name'],
-                    doctor_department=doctor['department'],
-                    user_input=request.user_input,
-                    language=request.language,
-                    available_slots=slots_text,
-                    conversation_history=conv_history
-                )
-            ),
-            HumanMessagePromptTemplate.from_template("{user_input}"),
-        ])
-        
-        chain = LLMChain(llm=llm, prompt=prompt)
-        response = await chain.arun(user_input=request.user_input)
-        
-        return {"response": response.strip()}
+        else:
+            # Show available slots
+            slots_text = ""
+            for day_slot in available_slots:
+                slots_text += f"\n📅 **{day_slot['day_name']}, {day_slot['formatted_date']}**\n"
+                for slot in day_slot['slots']:
+                    slots_text += f"   🕒 {slot['time']} - {slot['end_time']}\n"
+            
+            # Generate response asking for slot selection
+            conv_history = "\n".join(
+                f"{msg['role'].upper()}: {msg['content']}"
+                for msg in request.conversation_history if msg['role'] != "system"
+            )
+            
+            prompt = ChatPromptTemplate.from_messages([
+                SystemMessagePromptTemplate.from_template(
+                    SLOT_SELECTION_PROMPT.format(
+                        doctor_name=doctor['name'],
+                        doctor_department=doctor['department'],
+                        user_input=request.user_input,
+                        language=request.language,
+                        available_slots=slots_text,
+                        conversation_history=conv_history
+                    )
+                ),
+                HumanMessagePromptTemplate.from_template("{user_input}"),
+            ])
+            
+            chain = LLMChain(llm=llm, prompt=prompt)
+            response = await chain.arun(user_input=request.user_input)
+            
+            return {"response": response.strip()}
         
     except Exception as e:
-        logger.error(f"Slot selection error: {str(e)}")
+        logger.error(f"Slot selection with confirmation error: {str(e)}")
         raise HTTPException(500, "Slot selection failed")
 
 
@@ -468,21 +459,17 @@ async def handle_smart_appointment_flow(request: ChatRequest):
 
 import re
 # This function is the primary entry point for appointment flow as per the original main.py structure
-
-async def handle_enhanced_appointment_flow(request: ChatRequest):
-    """Enhanced appointment flow with doctor selection and slot booking"""
-    print("Function: handle_enhanced_appointment_flow")
+#  ===== UPDATED MAIN FLOW FUNCTION =====
+async def handle_enhanced_appointment_flow_with_confirmation(request: ChatRequest):
+    """Enhanced appointment flow with full confirmation support"""
+    print("Function: handle_enhanced_appointment_flow_with_confirmation")
     
     try:
-        # Get appointment booking state
-        booking_state = get_appointment_booking_state(request.conversation_history)
+        # Get enhanced appointment booking state
+        booking_state = get_updated_appointment_booking_state(request.conversation_history)
         
         if booking_state["step"] == "doctor_selection":
             # Check if we're in the middle of showing doctors
-            # Look for recent doctor search results in conversation
-            doctors_list = []
-            
-            # Try to get doctors from a recent search or from current search
             current_state = get_appointment_state(request.conversation_history)
             
             if current_state["step"] == "ready_to_search":
@@ -496,26 +483,34 @@ async def handle_enhanced_appointment_flow(request: ChatRequest):
                 if doctors_list:
                     return await handle_doctor_selection(request, doctors_list)
                 else:
-                    # No doctors found - fallback to original flow
                     return await search_and_display_doctors(request)
             else:
-                # Still collecting location info
                 return await collect_location_info(request)
         
         elif booking_state["step"] == "slot_selection":
-            # Handle slot selection
+            # Handle slot selection with confirmation detection
             doctor = await get_doctor_by_id(booking_state["selected_doctor_id"])
             if doctor:
-                return await handle_slot_selection(request, doctor)
+                return await handle_slot_selection_with_confirmation(request, doctor)
             else:
                 return {"response": "Sorry, there was an error retrieving doctor information. Please start again."}
+        
+        elif booking_state["step"] == "confirmation":
+            # Handle booking confirmation
+            doctor = await get_doctor_by_id(booking_state["selected_doctor_id"])
+            selected_slot = booking_state["selected_slot"]
+            
+            if doctor and selected_slot:
+                return await handle_booking_confirmation(request, doctor, selected_slot)
+            else:
+                return {"response": "Sorry, there was an error with your booking details. Please start again."}
         
         else:
             # Fallback to original appointment flow
             return await handle_smart_appointment_flow(request)
             
     except Exception as e:
-        logger.error(f"Enhanced appointment flow error: {str(e)}")
+        logger.error(f"Enhanced appointment flow with confirmation error: {str(e)}")
         raise HTTPException(500, "Enhanced appointment processing failed")
 
 
@@ -537,3 +532,224 @@ async def suggest_department(request: HistoryRequest):
     except Exception as e:
         logger.error(f"Department error: {str(e)}")
         return {"department": "General Medicine"}
+    
+
+
+
+
+# code after selcting slot and confirming booking
+from typing import List, Dict
+
+
+    
+async def extract_slot_selection_from_input(user_input: str, available_slots: list) -> dict:
+    """Extract selected date and time from user input"""
+    print("Function: extract_slot_selection_from_input")
+    
+    import re
+    from datetime import datetime
+    
+    user_input_lower = user_input.lower()
+    selected_slot = None
+    
+    # Method 1: Look for specific date mentions
+    for day_slot in available_slots:
+        date_variations = [
+            day_slot['formatted_date'].lower(),
+            day_slot['day_name'].lower(),
+            day_slot['date'],
+        ]
+        
+        for date_var in date_variations:
+            if date_var in user_input_lower:
+                # Found date, now look for time
+                for slot in day_slot['slots']:
+                    time_variations = [
+                        slot['time'].lower(),
+                        slot['start_24h'],
+                        slot['time'].replace(' AM', '').replace(' PM', '').lower(),
+                    ]
+                    
+                    for time_var in time_variations:
+                        if time_var in user_input_lower:
+                            selected_slot = {
+                                'date': day_slot['date'],
+                                'formatted_date': day_slot['formatted_date'],
+                                'day_name': day_slot['day_name'],
+                                'time': slot['time'],
+                                'end_time': slot['end_time'],
+                                'start_24h': slot['start_24h'],
+                                'end_24h': slot['end_24h']
+                            }
+                            print(f"Found slot selection: {selected_slot}")
+                            return selected_slot
+    
+    # Method 2: Look for time patterns in user input
+    time_patterns = [
+        r'(\d{1,2}:\d{2}\s*(?:am|pm))',
+        r'(\d{1,2}\s*(?:am|pm))',
+        r'(\d{1,2}:\d{2})'
+    ]
+    
+    for pattern in time_patterns:
+        matches = re.findall(pattern, user_input_lower, re.IGNORECASE)
+        if matches:
+            selected_time = matches[0]
+            # Try to match with available slots
+            for day_slot in available_slots:
+                for slot in day_slot['slots']:
+                    if selected_time.lower() in slot['time'].lower():
+                        selected_slot = {
+                            'date': day_slot['date'],
+                            'formatted_date': day_slot['formatted_date'],
+                            'day_name': day_slot['day_name'],
+                            'time': slot['time'],
+                            'end_time': slot['end_time'],
+                            'start_24h': slot['start_24h'],
+                            'end_24h': slot['end_24h']
+                        }
+                        print(f"Found time-based slot selection: {selected_slot}")
+                        return selected_slot
+    
+    # Method 3: Look for position indicators (first slot, second slot, etc.)
+    position_indicators = {
+        'first': 0, '1st': 0, '1': 0,
+        'second': 1, '2nd': 1, '2': 1,
+        'third': 2, '3rd': 2, '3': 2,
+        'fourth': 3, '4th': 3, '4': 4,
+        'fifth': 4, '5th': 4, '5': 5
+    }
+    
+    for indicator, index in position_indicators.items():
+        if indicator in user_input_lower:
+            # Find the index-th available slot across all days
+            slot_count = 0
+            for day_slot in available_slots:
+                for slot in day_slot['slots']:
+                    if slot_count == index:
+                        selected_slot = {
+                            'date': day_slot['date'],
+                            'formatted_date': day_slot['formatted_date'],
+                            'day_name': day_slot['day_name'],
+                            'time': slot['time'],
+                            'end_time': slot['end_time'],
+                            'start_24h': slot['start_24h'],
+                            'end_24h': slot['end_24h']
+                        }
+                        print(f"Found position-based slot selection: {selected_slot}")
+                        return selected_slot
+                    slot_count += 1
+    
+    print("No slot selection found in user input")
+    return None
+
+def get_selected_slot_from_history(conversation_history: List[Dict[str, str]]) -> dict:
+    """Extract selected slot from conversation history"""
+    print("Function: get_selected_slot_from_history")
+    
+    for msg in reversed(conversation_history):
+        if msg["role"] == "system" and "selected_slot:" in msg.get("content", ""):
+            try:
+                import json
+                slot_data = msg["content"].split("selected_slot:")[1].strip()
+                return json.loads(slot_data)
+            except:
+                continue
+    return None
+
+def detect_booking_confirmation_intent(user_input: str) -> bool:
+    """Detect if user wants to confirm booking"""
+    print("Function: detect_booking_confirmation_intent")
+    
+    confirmation_keywords = [
+        'yes', 'confirm', 'book', 'proceed', 'ok', 'okay', 'sure', 
+        'correct', 'right', 'perfect', 'good', 'fine', 'agree',
+        'confirm booking', 'book appointment', 'that\'s right',
+        'looks good', 'sounds good', 'go ahead'
+    ]
+    
+    user_input_lower = user_input.lower().strip()
+    
+    for keyword in confirmation_keywords:
+        if keyword in user_input_lower:
+            print(f"Found confirmation intent: {keyword}")
+            return True
+    
+    return False
+
+
+async def handle_booking_confirmation(request: ChatRequest, doctor: dict, selected_slot: dict):
+    """Handle booking confirmation display and final confirmation"""
+    print("Function: handle_booking_confirmation")
+    
+    try:
+        # Check if user is confirming the booking
+        if detect_booking_confirmation_intent(request.user_input):
+            # User confirmed - show final booking confirmation
+            return await handle_final_booking_confirmation(request, doctor, selected_slot)
+        
+        else:
+            # Show booking details for confirmation
+            conv_history = "\n".join(
+                f"{msg['role'].upper()}: {msg['content']}"
+                for msg in request.conversation_history if msg['role'] != "system"
+            )
+            
+            prompt = ChatPromptTemplate.from_messages([
+                SystemMessagePromptTemplate.from_template(
+                    BOOKING_CONFIRMATION_PROMPT.format(
+                        doctor_name=doctor['name'],
+                        doctor_department=doctor['department'],
+                        doctor_location=doctor.get('Location', 'Hospital'),
+                        selected_date=selected_slot['formatted_date'],
+                        selected_day=selected_slot['day_name'],
+                        selected_time=selected_slot['time'],
+                        selected_end_time=selected_slot['end_time'],
+                        user_input=request.user_input,
+                        language=request.language,
+                        conversation_history=conv_history
+                    )
+                ),
+                HumanMessagePromptTemplate.from_template("{user_input}"),
+            ])
+            
+            chain = LLMChain(llm=llm, prompt=prompt)
+            response = await chain.arun(user_input=request.user_input)
+            
+            return {"response": response.strip()}
+            
+    except Exception as e:
+        logger.error(f"Booking confirmation error: {str(e)}")
+        raise HTTPException(500, "Booking confirmation failed")
+
+async def handle_final_booking_confirmation(request: ChatRequest, doctor: dict, selected_slot: dict):
+    """Handle final booking confirmation after user confirms"""
+    print("Function: handle_final_booking_confirmation")
+    
+    try:
+        # Generate final confirmation message
+        prompt = ChatPromptTemplate.from_messages([
+            SystemMessagePromptTemplate.from_template(
+                FINAL_BOOKING_CONFIRMATION_PROMPT.format(
+                    doctor_name=doctor['name'],
+                    doctor_department=doctor['department'],
+                    doctor_location=doctor.get('Location', 'Hospital'),
+                    selected_date=selected_slot['formatted_date'],
+                    selected_day=selected_slot['day_name'],
+                    selected_time=selected_slot['time'],
+                    selected_end_time=selected_slot['end_time'],
+                    language=request.language
+                )
+            ),
+            HumanMessagePromptTemplate.from_template("{user_input}"),
+        ])
+        
+        chain = LLMChain(llm=llm, prompt=prompt)
+        response = await chain.arun(user_input=request.user_input)
+        
+        return {"response": response.strip()}
+        
+    except Exception as e:
+        logger.error(f"Final booking confirmation error: {str(e)}")
+        raise HTTPException(500, "Final booking confirmation failed")
+

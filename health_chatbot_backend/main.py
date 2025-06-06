@@ -18,7 +18,7 @@ from models.request_models import (
 from agents.greeting_agent import generate_greeting
 from agents.intent_agent import detect_user_intent, generate_clarification
 from agents.medical_agent import handle_diagnosis_flow
-from agents.appointment_agent import handle_enhanced_appointment_flow,suggest_department # Renamed for clarity in main.py, was suggest_department_func
+from agents.appointment_agent import handle_enhanced_appointment_flow_with_confirmation,suggest_department # Renamed for clarity in main.py, was suggest_department_func
 
 # Import service functions
 from services.report_service import generate_report, generate_offline_report
@@ -64,7 +64,7 @@ async def chat(request: ChatRequest):
         if intent == "SWITCH_TO_APPOINTMENT":
             # Switch from diagnosis to appointment
             update_flow_marker(request.conversation_history, "appointment")
-            return await handle_enhanced_appointment_flow(request)
+            return await handle_enhanced_appointment_flow_with_confirmation(request)
         
         elif intent == "SWITCH_TO_DIAGNOSIS":
             # Switch from appointment to diagnosis
@@ -76,7 +76,7 @@ async def chat(request: ChatRequest):
             # Check if we should transition to appointment after 5 questions
             if question_count >= 5 and intent == "APPOINTMENT":
                 update_flow_marker(request.conversation_history, "appointment")
-                return await handle_enhanced_appointment_flow(request)
+                return await handle_enhanced_appointment_flow_with_confirmation(request)
             else:
                 return await handle_diagnosis_flow(request, question_count)
         
@@ -86,7 +86,7 @@ async def chat(request: ChatRequest):
                 update_flow_marker(request.conversation_history, "diagnosis")
                 return await handle_diagnosis_flow(request)
             else:
-                return await handle_enhanced_appointment_flow(request)
+                return await handle_enhanced_appointment_flow_with_confirmation(request)
         
         else:
             # 6. No flow determined yet - use intelligent intent detection
@@ -102,7 +102,7 @@ async def chat(request: ChatRequest):
                     "role": "system", 
                     "content": "selected_flow: appointment"
                 })
-                return await handle_enhanced_appointment_flow(request)
+                return await handle_enhanced_appointment_flow_with_confirmation(request)
             
             else:  # UNCLEAR intent
                 clarification_response = await generate_clarification(request.user_input, request.language)

@@ -27,7 +27,8 @@ async def handle_diagnosis_flow(request: ChatRequest, question_count: int = None
                 MEDICAL_PROMPT.format(
                     conversation_history=conv_history,
                     language=request.language,
-                    question_count=question_count
+                    question_count=question_count,
+                    department = request.department 
                 )
             ),
             HumanMessagePromptTemplate.from_template("{user_input}"),
