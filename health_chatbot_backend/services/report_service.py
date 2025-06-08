@@ -16,6 +16,7 @@ from models.request_models import HistoryRequest,OfflineReportRequest
 # Import llm from settings
 from config.settings import llm, logger
 from models.prompts import REPORT_PROMPT, OFFLINE_REPORT_PROMPT
+
 async def generate_report(request: HistoryRequest):
     try:    
         # Extract name, gender, and age from the request

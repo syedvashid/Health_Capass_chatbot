@@ -368,7 +368,7 @@ EXAMPLE FORMAT:
 📅 **Date:** [Day], [Date]
 🕒 **Time:** [Time] - [End Time]
 
-Please confirm if these details are correct and you want to proceed with booking this appointment. Type 'yes' or 'confirm' to book, or let me know if you want to change anything."
+Please confirm if these details are correct and you want to proceed with booking this appointment. Type 'confirm with your selected doctor to book', or let me know if you want to change anything."
 
 Generate confirmation request with all appointment details."""
 

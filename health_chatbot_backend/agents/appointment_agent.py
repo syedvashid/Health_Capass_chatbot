@@ -340,7 +340,7 @@ async def handle_doctor_selection(request: ChatRequest, doctors_list: list):
         else:
             # No clear selection - ask for clarification
             doctors_info = "\n".join([
-                f"🏥 **Dr. {doc['name']}** - {doc['department']}\n   📍 {doc['Location']}\n   🕒 {doc.get('timings', 'Contact for timings')}"
+                f"🏥 **Dr. {doc['name']}** - {doc['department']}\n   📍 {doc['location']}\n   🕒 {doc.get('timings', 'Contact for timings')}"
                 for doc in doctors_list
             ])
             
@@ -674,7 +674,9 @@ def detect_booking_confirmation_intent(user_input: str) -> bool:
         if keyword in user_input_lower:
             print(f"Found confirmation intent: {keyword}")
             return True
-    
+        else:
+            
+            print("Found not confirm ")
     return False
 
 

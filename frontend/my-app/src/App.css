@@ -1,0 +1,226 @@
+:root {
+  --primary-blue: #762e8d;
+  --secondary-light: #f8f9fa;
+  --accent-green: #28a745;
+  --dark-text: #343a40;
+  --light-text: #6c757d;
+  --border-color: #ced4da; /* A more standard border color */
+  --background-light: #ffffff; /* Assuming a white background */
+  --button-purple: #8e44ad; /* Purple color for buttons */
+ }
+ 
+ .app {
+  max-width: 1200px; /* Wider to feel more like a website */
+  margin: 2rem auto; /* Add more top/bottom margin for spacing */
+  padding: 2rem; /* Increase padding */
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; /* A more modern and common web font */
+  background-color: var(--background-light); /* Use the background color variable */
+  border-radius: 8px; /* Optional: Add a subtle rounded border */
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); /* Optional: Subtle shadow */
+ }
+ 
+ .header {
+  text-align: left; /* Align header text to the left, common on websites */
+  margin-bottom: 2.5rem; /* Increase bottom margin */
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border-color); /* Add a subtle bottom border */
+ }
+ 
+ .header h1 {
+  color: var(--primary-blue); /* Use the primary blue color */
+  font-size: 2.5rem; /* Slightly larger font size */
+  margin-bottom: 0.5rem;
+ }
+ 
+ .chat-container {
+  display: flex;
+  justify-content: center; /* Keep this if you want the chat centered */
+ }
+
+
+ .chat-box {
+  width: 100%;
+  max-width: 900px; /* Limit the width of the chat box */
+  display: flex;
+  flex-direction: column;
+ }
+ 
+ .messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.2rem; /* Increase padding */
+  margin-bottom: 1.2rem;
+  border: 1px solid var(--border-color); /* Use the border color variable */
+  border-radius: 8px;
+  background-color: var(--secondary-light); /* Use the light background color */
+  min-height: 400px;
+  max-height: 600px; /* Adjust max height if needed */
+ }
+ 
+ .message {
+  margin-bottom: 1rem; /* Increase margin */
+  padding: 1rem; /* Increase padding */
+  border-radius: 10px; /* More rounded message bubbles */
+  max-width: 70%; /* Slightly reduce max width for visual appeal */
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); /* Subtle shadow for messages */
+ }
+ 
+ .message.user {
+  background-color: #e7f5ff; /* Lighter blue for user messages */
+  margin-left: auto;
+  color: var(--dark-text); /* Darker text for better readability */
+ }
+ 
+ .message.assistant {
+  background-color: #f8f9fa; /* Light gray for assistant messages */
+  margin-right: auto;
+  white-space: pre-line; /* Preserve whitespace for better formatting */
+  color: var(--dark-text);
+ }
+ 
+ .message.typing {
+  background-color: #f8f9fa;
+  color: var(--light-text); /* Use the light text color */
+  font-style: italic;
+ }
+ 
+ .welcome-message {
+  text-align: center;
+  color: var(--light-text); /* Use the light text color */
+  font-style: italic;
+  margin-bottom: 2rem; /* Add some space below */
+ }
+ 
+ .input-area {
+  display: flex;
+  gap: 0.8rem; /* Increase gap */
+  margin-top: 1.5rem; /* Increase margin */
+  margin-bottom: 1.5rem; /* Increase margin */
+  padding: 0 1rem; /* Add some horizontal padding */
+ }
+ 
+ .input-area input {
+  flex: 1;
+  padding: 1rem; /* Increase padding */
+  border: 1px solid var(--border-color); /* Use the border color variable */
+  border-radius: 6px; /* Slightly more rounded input */
+  font-size: 1.1rem; /* Slightly larger font size */
+ }
+ 
+ .input-area button {
+  padding: 1rem 2rem; /* Increase padding */
+  background-color: var(--button-purple); /* Use purple color */
+  color: white;
+  border: none;
+  border-radius: 6px; /* Slightly more rounded button */
+  cursor: pointer;
+  font-size: 1.1rem; /* Slightly larger font size */
+  transition: background-color 0.3s ease; /* Add a smooth transition for hover effect */
+ }
+ 
+ .input-area button:hover {
+  background-color: #762e8d; /* Darker shade on hover */
+ }
+ 
+ .input-area button:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+ }
+ 
+ .report-container {
+  display: flex;
+  justify-content: center;
+  margin-top: 2rem; /* Increase margin */
+ }
+ 
+ .report-btn {
+  padding: 1rem 2rem; /* Increase padding */
+  background-color: var(--button-purple); /* Use purple color */
+  color: white;
+  border: none;
+  border-radius: 6px; /* Slightly more rounded button */
+  cursor: pointer;
+  font-size: 1.1rem; /* Slightly larger font size */
+  font-weight: bold;
+  transition: background-color 0.3s ease; /* Add a smooth transition for hover effect */
+ }
+ 
+ .report-btn:hover {
+  background-color: #762e8d; /* Darker shade on hover */
+ }
+ 
+ .report-btn:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+ }
+ 
+ 
+.form-container {
+  display: flex;
+  align-items: center; /* Vertically align image and form */
+  gap: 30px; /* Space between image and form */
+  flex-direction: row; /* Ensure image and form are in a row */
+}
+
+.form-container h2 {
+  margin-top: 0;
+  margin-bottom: 15px;
+}
+ 
+.form-container form {
+  display: flex;
+  flex-direction: column;
+  width: 300px;
+  padding: 20px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  background-color: #f9f9f9;
+}
+
+.form-container label {
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+}
+ 
+ .form-container input,
+ .form-container select {
+  padding: 8px;
+  margin-top: 5px;
+  border: 1px solid #ddd;
+  border-radius: 3px
+ }
+ 
+ 
+.form-container .form-buttons {
+  margin-top: 20px;
+  display: flex;
+  gap: 10px;
+}
+
+.form-container button {
+  padding: 10px 15px;
+  border: none;
+  border-radius: 5px;
+  background-color: #762e8d;
+  color: white;
+  cursor: pointer;
+  transition: background-color 0.3s ease; /* Add a smooth transition for hover effect */
+}
+ 
+ .form-buttons button:hover {
+  background-color: #762e8d; /* Darker shade on hover */
+ }
+ 
+ .form-buttons button:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+ }
+ 
+ .suggested-department {
+  margin-top: 6rem; /* Increase margin */
+  text-align: center;
+  font-size: 1.3rem; /* Slightly larger font size */
+  color: var(--accent-green); /* Use the accent green color */
+  font-weight: bold;
+ }

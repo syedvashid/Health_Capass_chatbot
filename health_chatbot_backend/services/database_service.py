@@ -1,8 +1,9 @@
-import mysql.connector
+import psycopg2
+from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
 import os
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 
 # Load environment variables
@@ -13,16 +14,16 @@ logger = logging.getLogger(__name__)
 def get_db_connection():
     print("Function: get_db_connection")
     try:
-        conn = mysql.connector.connect(
-            host=os.getenv("DB_HOST", "127.0.0.1"),  # Use 127.0.0.1 for TCP/IP
-            user=os.getenv("DB_USER"),
+        conn = psycopg2.connect(
+            host=os.getenv("DB_HOST", "localhost"),
+            user=os.getenv("DB_USER", "postgres"),
             password=os.getenv("DB_PASSWORD"),
-            database=os.getenv("DB_DATABASE"),
-            port=3306
+            database=os.getenv("DB_NAME", "chatbot"),
+            port=int(os.getenv("DB_PORT", "5432"))
         )
         logger.info("Database connection successful!")
         return conn
-    except mysql.connector.Error as e:
+    except psycopg2.Error as e:
         logger.error(f"Database connection failed: {e}")
         return None
 
@@ -32,14 +33,14 @@ async def location_based_doctor_search(city: str = None, department: str = None,
     
     try:
         conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
         
         # Build dynamic query based on available parameters
         query_parts = []
         params = []
         
         if city:
-            query_parts.append("LOWER(Location) = LOWER(%s)")
+            query_parts.append("LOWER(location) = LOWER(%s)")
             params.append(city)
         
         if doctor_name:
@@ -61,6 +62,9 @@ async def location_based_doctor_search(city: str = None, department: str = None,
         cursor.execute(base_query, params)
         doctors_list = cursor.fetchall() or []
         
+        # Convert RealDictRow to regular dict for consistency
+        doctors_list = [dict(doctor) for doctor in doctors_list]
+        
         cursor.close()
         conn.close()
         
@@ -70,8 +74,6 @@ async def location_based_doctor_search(city: str = None, department: str = None,
         logger.error(f"Location-based doctor search error: {str(e)}")
         return []
 
-from typing import Optional  # Add this import if not present
-
 # ===== NEW DATABASE FUNCTIONS =====
 async def get_doctor_by_id(doctor_id: int) -> dict:
     """Get doctor details by ID"""
@@ -79,11 +81,15 @@ async def get_doctor_by_id(doctor_id: int) -> dict:
     
     try:
         conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
         
         query = "SELECT * FROM doctors WHERE id = %s"
         cursor.execute(query, (doctor_id,))
         doctor = cursor.fetchone()
+        
+        # Convert RealDictRow to regular dict if found
+        if doctor:
+            doctor = dict(doctor)
         
         cursor.close()
         conn.close()
@@ -92,7 +98,7 @@ async def get_doctor_by_id(doctor_id: int) -> dict:
         
     except Exception as e:
         logger.error(f"Get doctor by ID error: {str(e)}")
-        
+        return None
 
 
 def parse_doctor_timings(timings_str: str) -> list:
@@ -208,7 +214,7 @@ def generate_available_slots(doctor: dict, busy_slots: list, days_ahead: int = 7
         day_busy_slots = []
         for slot in busy_slots:
             # Handle both datetime and string date formats
-            slot_date = slot['Date']
+            slot_date = slot['date']
             if hasattr(slot_date, 'strftime'):
                 slot_date_str = slot_date.strftime('%Y-%m-%d')
             else:
@@ -240,8 +246,8 @@ def generate_available_slots(doctor: dict, busy_slots: list, days_ahead: int = 7
                     # Check if this slot is busy
                     is_busy = False
                     for busy_slot in day_busy_slots:
-                        busy_start = busy_slot['Start_Time']
-                        busy_end = busy_slot['End_Time']
+                        busy_start = busy_slot['start_time']
+                        busy_end = busy_slot['end_time']
                         
                         # Handle different time formats
                         if isinstance(busy_start, str):
@@ -308,7 +314,7 @@ async def get_doctor_available_slots(doctor_id: int, days_ahead: int = 7) -> lis
     
     try:
         conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
         
         # Get doctor's general timings
         doctor = await get_doctor_by_id(doctor_id)
@@ -321,17 +327,20 @@ async def get_doctor_available_slots(doctor_id: int, days_ahead: int = 7) -> lis
         end_date = datetime.now() + timedelta(days=days_ahead)
         
         query = """
-        SELECT Date, Start_Time, End_Time, Status 
+        SELECT date, start_time, end_time, status 
         FROM slot 
-        WHERE Doctor_id = %s 
-        AND Date >= CURDATE() 
-        AND Date <= %s 
-        AND Status = 'busy'
-        ORDER BY Date, Start_Time
+        WHERE doctor_id = %s 
+        AND date >= CURRENT_DATE 
+        AND date <= %s 
+        AND status = 'busy'
+        ORDER BY date, start_time
         """
         
         cursor.execute(query, (doctor_id, end_date.strftime('%Y-%m-%d')))
         busy_slots = cursor.fetchall() or []
+        
+        # Convert RealDictRow to regular dict
+        busy_slots = [dict(slot) for slot in busy_slots]
         
         cursor.close()
         conn.close()
