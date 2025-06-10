@@ -6,6 +6,9 @@ class ChatRequest(BaseModel):
     conversation_history: List[Dict[str, str]] = []
     language: str
     department: str
+    name: str
+    gender: str
+    age: int
 
 class HistoryRequest(BaseModel):
     name: str

@@ -332,13 +332,13 @@ async def get_doctor_available_slots(doctor_id: int, days_ahead: int = 7) -> lis
         WHERE doctor_id = %s 
         AND date >= CURRENT_DATE 
         AND date <= %s 
-        AND status = 'busy'
+        AND status = 'Busy'
         ORDER BY date, start_time
         """
         
         cursor.execute(query, (doctor_id, end_date.strftime('%Y-%m-%d')))
         busy_slots = cursor.fetchall() or []
-        
+        print(f"Found {len(busy_slots)} busy slots for doctor ID {doctor_id}")
         # Convert RealDictRow to regular dict
         busy_slots = [dict(slot) for slot in busy_slots]
         
@@ -354,3 +354,181 @@ async def get_doctor_available_slots(doctor_id: int, days_ahead: int = 7) -> lis
     except Exception as e:
         logger.error(f"Get available slots error: {str(e)}")
         return []
+    
+
+
+
+
+
+
+
+
+
+
+
+    # now code is to store the information in the database
+
+
+
+    # ===== NEW DATABASE FUNCTIONS FOR BOOKING STORAGE =====
+
+async def store_appointment_in_database(doctor: dict, selected_slot: dict, patient_info: dict = None) -> dict:
+    """Store confirmed appointment in the database"""
+    print("Function: store_appointment_in_database")
+    
+    try:
+        conn = get_db_connection()
+        if not conn:
+            raise Exception("Database connection failed")
+        
+        cursor = conn.cursor()
+        
+        # Prepare appointment data
+        doctor_name = doctor.get('name', 'Unknown Doctor')
+        
+        # Extract patient information (you may need to collect this from user session/context)
+        patient_name = patient_info.get('name') if patient_info else None
+        patient_age = patient_info.get('age') if patient_info else None
+        patient_gender = patient_info.get('gender') if patient_info else None
+        reason_for_visit = patient_info.get('reason') if patient_info else None
+        
+        # Convert time slot to database format
+        time_slot = selected_slot['start_24h']  # 24-hour format like "10:30"
+        booking_date = datetime.now()
+        
+        # First, let's check if the table has auto-increment ID or we need to generate one
+        try:
+            # Try with RETURNING id (works if id is SERIAL/auto-increment)
+            insert_query = """
+            INSERT INTO appointments (
+                doctor_name, patient_name, patient_age, patient_gender, 
+                time_slot, reason_for_visit, booking_date
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            RETURNING id;
+            """
+            
+            cursor.execute(insert_query, (
+                doctor_name,
+                patient_name,
+                patient_age,
+                patient_gender,
+                time_slot,
+                reason_for_visit,
+                booking_date
+            ))
+            
+            # Get the generated appointment ID
+            result = cursor.fetchone()
+            appointment_id = result[0] if result else None
+            
+        except Exception as e:
+            print(f"RETURNING id failed, trying alternative approach: {str(e)}")
+            
+            # If RETURNING doesn't work, get the max ID and increment
+            cursor.execute("SELECT COALESCE(MAX(id), 0) + 1 FROM appointments")
+            next_id = cursor.fetchone()[0]
+            
+            # Insert with explicit ID
+            insert_query = """
+            INSERT INTO appointments (
+                id, doctor_name, patient_name, patient_age, patient_gender, 
+                time_slot, reason_for_visit, booking_date
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            
+            cursor.execute(insert_query, (
+                next_id,
+                doctor_name,
+                patient_name,
+                patient_age,
+                patient_gender,
+                time_slot,
+                reason_for_visit,
+                booking_date
+            ))
+            
+            appointment_id = next_id
+        
+        # Commit the transaction
+        conn.commit()
+        
+        # Also update the slot table to mark this time as busy
+        doctor_id = doctor.get('id')
+        if doctor_id:
+            await mark_slot_as_busy(doctor_id, selected_slot['date'], selected_slot['start_24h'], selected_slot['end_24h'])
+        
+        cursor.close()
+        conn.close()
+        
+        print(f"Appointment stored successfully with ID: {appointment_id}")
+        
+        return {
+            'success': True,
+            'appointment_id': appointment_id,
+            'message': 'Appointment booked successfully!'
+        }
+        
+    except Exception as e:
+        logger.error(f"Database storage error: {str(e)}")
+        return {
+            'success': False,
+            'error': str(e),
+            'message': 'Failed to store appointment in database'
+        }
+
+async def mark_slot_as_busy(doctor_id: int, date: str, start_time: str, end_time: str) -> bool:
+    """Mark a time slot as busy in the slot table"""
+    print(f"Function: mark_slot_as_busy - Doctor: {doctor_id}, Date: {date}, Time: {start_time}-{end_time}")
+    
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return False
+        
+        cursor = conn.cursor()
+        
+        # Check if slot entry already exists
+        check_query = """
+        SELECT id FROM slot 
+        WHERE doctor_id = %s AND date = %s AND start_time = %s AND end_time = %s
+        """
+        
+        cursor.execute(check_query, (doctor_id, date, start_time, end_time))
+        existing_slot = cursor.fetchone()
+        
+        if existing_slot:
+            # Update existing slot to busy
+            update_query = """
+            UPDATE slot SET status = 'Busy' 
+            WHERE doctor_id = %s AND date = %s AND start_time = %s AND end_time = %s
+            """
+            cursor.execute(update_query, (doctor_id, date, start_time, end_time))
+        else:
+            # Insert new busy slot
+            insert_query = """
+            INSERT INTO slot (doctor_id, date, start_time, end_time, status)
+            VALUES (%s, %s, %s, %s, 'Busy')
+            """
+            cursor.execute(insert_query, (doctor_id, date, start_time, end_time))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        print(f"Slot marked as busy successfully")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Mark slot busy error: {str(e)}")
+        return False
+def extract_patient_info_from_conversation(request) -> dict:
+    """Extract patient information from conversation history or request object"""
+    print("Function: extract_patient_info_from_conversation")
+    
+    patient_info = {
+        'name': getattr(request, 'name', None),
+        'age': getattr(request, 'age', None),
+        'gender': getattr(request, 'gender', None),
+        'reason': getattr(request, 'department', None),  # Assuming department is used as reason for visit
+    }
+    return patient_info

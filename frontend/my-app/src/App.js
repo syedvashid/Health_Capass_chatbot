@@ -97,6 +97,9 @@ function App() {
           // Send the full history including the newly added user message
           conversation_history: messagesToSend,
           language: formData.language,
+          name: formData.name,
+          age: formData.age,
+          gender: formData.gender
         }),
       });
 

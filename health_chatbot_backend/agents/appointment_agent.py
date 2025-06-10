@@ -11,7 +11,7 @@ from config.settings import llm, logger
 # Import utilities
 from utils.conversation_utils import update_flow_marker, get_current_flow
 # Import database service functions
-from services.database_service import location_based_doctor_search, get_doctor_by_id, get_doctor_available_slots
+from services.database_service import extract_patient_info_from_conversation, location_based_doctor_search, get_doctor_by_id, get_doctor_available_slots, store_appointment_in_database
 from models.request_models import ChatRequest,HistoryRequest
 # Agentic System Prompts for Appointment Flow
 from models.prompts import (
@@ -725,33 +725,71 @@ async def handle_booking_confirmation(request: ChatRequest, doctor: dict, select
         raise HTTPException(500, "Booking confirmation failed")
 
 async def handle_final_booking_confirmation(request: ChatRequest, doctor: dict, selected_slot: dict):
-    """Handle final booking confirmation after user confirms"""
+    """Handle final booking confirmation after user confirms - MODIFIED to store in database"""
     print("Function: handle_final_booking_confirmation")
     
     try:
-        # Generate final confirmation message
-        prompt = ChatPromptTemplate.from_messages([
-            SystemMessagePromptTemplate.from_template(
-                FINAL_BOOKING_CONFIRMATION_PROMPT.format(
-                    doctor_name=doctor['name'],
-                    doctor_department=doctor['department'],
-                    doctor_location=doctor.get('Location', 'Hospital'),
-                    selected_date=selected_slot['formatted_date'],
-                    selected_day=selected_slot['day_name'],
-                    selected_time=selected_slot['time'],
-                    selected_end_time=selected_slot['end_time'],
-                    language=request.language
-                )
-            ),
-            HumanMessagePromptTemplate.from_template("{user_input}"),
-        ])
+        # Extract patient information from conversation history
+        patient_info = extract_patient_info_from_conversation(request)
+        print(f"Extracted patient info: {patient_info}")
+        # Store appointment in database
+        db_result = await store_appointment_in_database(doctor, selected_slot, patient_info)
         
-        chain = LLMChain(llm=llm, prompt=prompt)
-        response = await chain.arun(user_input=request.user_input)
-        
-        return {"response": response.strip()}
+        if db_result['success']:
+            # Generate final confirmation message with booking ID
+            prompt = ChatPromptTemplate.from_messages([
+                SystemMessagePromptTemplate.from_template(
+                    FINAL_BOOKING_CONFIRMATION_PROMPT.format(
+                        doctor_name=doctor['name'],
+                        doctor_department=doctor['department'],
+                        doctor_location=doctor.get('Location', 'Hospital'),
+                        selected_date=selected_slot['formatted_date'],
+                        selected_day=selected_slot['day_name'],
+                        selected_time=selected_slot['time'],
+                        selected_end_time=selected_slot['end_time'],
+                        language=request.language,
+                        booking_id=db_result['appointment_id'],  # Add booking ID to prompt
+                        patient_name=patient_info.get('name', 'Patient')
+                    )
+                ),
+                HumanMessagePromptTemplate.from_template("{user_input}"),
+            ])
+            
+            chain = LLMChain(llm=llm, prompt=prompt)
+            response = await chain.arun(user_input=request.user_input)
+            
+            # Add booking success information to response
+            final_response = f"{response.strip()}\n\n✅ Booking Reference ID: {db_result['appointment_id']}"
+            
+            return {"response": final_response}
+        else:
+            # Database storage failed, but still show confirmation
+            logger.error(f"Database storage failed: {db_result['error']}")
+            
+            prompt = ChatPromptTemplate.from_messages([
+                SystemMessagePromptTemplate.from_template(
+                    FINAL_BOOKING_CONFIRMATION_PROMPT.format(
+                        doctor_name=doctor['name'],
+                        doctor_department=doctor['department'],
+                        doctor_location=doctor.get('Location', 'Hospital'),
+                        selected_date=selected_slot['formatted_date'],
+                        selected_day=selected_slot['day_name'],
+                        selected_time=selected_slot['time'],
+                        selected_end_time=selected_slot['end_time'],
+                        language=request.language
+                    )
+                ),
+                HumanMessagePromptTemplate.from_template("{user_input}"),
+            ])
+            
+            chain = LLMChain(llm=llm, prompt=prompt)
+            response = await chain.arun(user_input=request.user_input)
+            
+            # Add warning about database issue
+            final_response = f"{response.strip()}\n\n⚠️ Note: There was an issue saving your booking details. Please contact support if needed."
+            
+            return {"response": final_response}
         
     except Exception as e:
         logger.error(f"Final booking confirmation error: {str(e)}")
         raise HTTPException(500, "Final booking confirmation failed")
-
