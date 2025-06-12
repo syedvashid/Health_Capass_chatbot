@@ -11,7 +11,7 @@ from config.settings import llm, logger
 # Import utilities
 from utils.conversation_utils import update_flow_marker, get_current_flow
 # Import database service functions
-from services.database_service import extract_patient_info_from_conversation, location_based_doctor_search, get_doctor_by_id, get_doctor_available_slots, store_appointment_in_database
+from services.database_service import location_based_doctor_search, get_doctor_by_id, get_doctor_available_slots, store_appointment_in_database
 from models.request_models import ChatRequest,HistoryRequest
 # Agentic System Prompts for Appointment Flow
 from models.prompts import (
@@ -793,3 +793,17 @@ async def handle_final_booking_confirmation(request: ChatRequest, doctor: dict, 
     except Exception as e:
         logger.error(f"Final booking confirmation error: {str(e)}")
         raise HTTPException(500, "Final booking confirmation failed")
+    
+
+       
+def extract_patient_info_from_conversation(request) -> dict:
+    """Extract patient information from conversation history or request object"""
+    print("Function: extract_patient_info_from_conversation")
+    
+    patient_info = {
+        'name': getattr(request, 'name', None),
+        'age': getattr(request, 'age', None),
+        'gender': getattr(request, 'gender', None),
+        'reason': getattr(request, 'department', None),  # Assuming department is used as reason for visit
+    }
+    return patient_info

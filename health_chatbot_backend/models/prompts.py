@@ -88,9 +88,14 @@ check for user message {user_input} for keywords related to health, medical diag
 Possible intents:
 1. DIAGNOSIS - User wants medical diagnosis,or says "I need help with health diagnosis. Can you analyze my symptoms?", medical consultation ,health diagnosis,or if user answers on 'A",'B','c','d', OR if user is explaining his problem like e.g fever,cold ,pain etc.
 2. APPOINTMENT - User wants to book appointment, find doctor, schedule consultation ,want help in finding a doctor. 
-3. SWITCH_TO_APPOINTMENT - User wants to switch from diagnosis to appointment booking by askin doctor name , department or appointment is mentioned , asking for doctor suggestion.
-4. SWITCH_TO_DIAGNOSIS - User wants to switch from appointment to diagnosis by saying proble ,unable to understand, asking for medical questions.
+3. SWITCH_TO_APPOINTMENT - User wants to switch from diagnosis to appointment booking by askin doctor name , department or appointment is mentioned , asking for doctor suggestion, *IMPORTANT*, If the number of questions are more then 5,then SWITCH_TO_APPOINTMENT.
+4. SWITCH_TO_DIAGNOSIS - User wants to switch from appointment to diagnosis by saying "let complete the diagnosis first", "I want to discuss my symptoms", or if user is asking for health problem.
 5. UNCLEAR - Intent is not clear, out of context, or not related to health/appointment.(only when unable to understand what to chosediagnosis flow or appointment)
+
+**IMPORTANT INSTRUCTIONS:**
+-Care fully analyze the current flow and user message and be stable on the flow until user is not asking to switch flow.
+- If user is asking for appointment then only return APPOINTMENT or DIAGNOSIS intent.
+
 
 -answer must be only one word never say any thing more than a word.
 Analyze the message and return ONLY one of these words: DIAGNOSIS, APPOINTMENT, SWITCH_TO_APPOINTMENT, SWITCH_TO_DIAGNOSIS, or UNCLEAR"""

@@ -521,14 +521,6 @@ async def mark_slot_as_busy(doctor_id: int, date: str, start_time: str, end_time
     except Exception as e:
         logger.error(f"Mark slot busy error: {str(e)}")
         return False
-def extract_patient_info_from_conversation(request) -> dict:
-    """Extract patient information from conversation history or request object"""
-    print("Function: extract_patient_info_from_conversation")
     
-    patient_info = {
-        'name': getattr(request, 'name', None),
-        'age': getattr(request, 'age', None),
-        'gender': getattr(request, 'gender', None),
-        'reason': getattr(request, 'department', None),  # Assuming department is used as reason for visit
-    }
-    return patient_info
+
+ 

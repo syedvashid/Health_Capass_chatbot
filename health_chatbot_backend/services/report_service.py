@@ -17,6 +17,11 @@ from models.request_models import HistoryRequest,OfflineReportRequest
 from config.settings import llm, logger
 from models.prompts import REPORT_PROMPT, OFFLINE_REPORT_PROMPT
 
+from fastapi import APIRouter
+
+app = APIRouter()
+
+@app.post("/generate_report")
 async def generate_report(request: HistoryRequest):
     try:    
         # Extract name, gender, and age from the request

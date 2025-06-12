@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 class ChatRequest(BaseModel):
     user_input: str
@@ -9,6 +9,9 @@ class ChatRequest(BaseModel):
     name: str
     gender: str
     age: int
+    chat_history_id: Optional[str] = None  # To track the chat session
+    last_question_id: Optional[str] = None # To link an answer to the last question
+
 
 class HistoryRequest(BaseModel):
     name: str

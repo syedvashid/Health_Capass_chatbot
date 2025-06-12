@@ -8,7 +8,7 @@ function App() {
     name: '',
     age: '',
     gender: 'Male',
-    department: 'General Medicine',
+    department: 'Fever and Cold', // Default department
     language: 'English', // New field for language
   });
   const [input, setInput] = useState('');
@@ -17,6 +17,8 @@ function App() {
   const [suggestedDepartment, setSuggestedDepartment] = useState(''); // State for suggested department
   const [showQuickActions, setShowQuickActions] = useState(true); // State for quick action buttons
   const messagesEndRef = useRef(null);
+  const [chatHistoryId, setChatHistoryId] = useState(null); // New state to store chat_history_id
+  const [lastQuestionId, setLastQuestionId] = useState(null); // New state to store last_question_id
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -64,25 +66,20 @@ function App() {
     
     setInput(quickMessage);
     setShowQuickActions(false); // Hide quick actions after first use
-  };
+    setLastQuestionId(null); // <<< ADD THIS LINE: Clear lastQuestionId on quick action
 
-  const handleSubmit = async (e) => {
+  };
+const handleSubmit = async (e) => {
     e.preventDefault();
     if (!input.trim()) return;
 
-    // Hide quick actions when user starts typing their own messages
     setShowQuickActions(false);
 
     const userMessage = { role: 'user', content: input };
-    // Optimistically add user message for immediate display before sending
-    setMessages((prev) => [...prev, userMessage]); // This will trigger a re-render for the user message
+    setMessages((prev) => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
 
-    // IMPORTANT: Create a new array that *includes* the latest user message
-    // and any existing system messages in 'messages' state,
-    // to send as conversation_history.
-    // 'messages' is async, so we use the `prev` state or a new array.
     const messagesToSend = [...messages, userMessage];
 
     try {
@@ -94,27 +91,24 @@ function App() {
         body: JSON.stringify({
           user_input: input,
           department: formData.department,
-          // Send the full history including the newly added user message
           conversation_history: messagesToSend,
           language: formData.language,
           name: formData.name,
           age: formData.age,
-          gender: formData.gender
+          gender: formData.gender,
+          chat_history_id: chatHistoryId, // <<< ADD THIS LINE
+          last_question_id: lastQuestionId // <<< ADD THIS LINE
         }),
       });
 
       const data = await response.json();
-      let newMessages = [...messagesToSend]; // Start building the new state from what we just sent
+      let newMessages = [...messagesToSend];
 
       // --- CRITICAL FIX FOR FLOW MARKER ---
-      // Check if a flow marker already exists in the local history being sent
       const hasFlowMarker = messagesToSend.some(
         (msg) => msg.role === 'system' && msg.content.startsWith('selected_flow:')
       );
 
-      // If no flow marker exists and the user's input indicates a choice,
-      // manually add the system message to the frontend's local history.
-      // This replicates the backend's behavior of adding the marker internally.
       if (!hasFlowMarker) {
           const lowerInput = input.trim().toLowerCase();
           if (lowerInput.includes("diagnosis")) {
@@ -128,7 +122,19 @@ function App() {
       // Add the assistant's response to the new messages array
       newMessages.push({ role: 'assistant', content: data.response });
 
-      // Update the state with the combined history, including the system message if added
+      // <<< ADD THESE LINES TO STORE IDs >>>
+      if (data.chat_history_id) {
+        setChatHistoryId(data.chat_history_id);
+      }
+      if (data.question_id) {
+        setLastQuestionId(data.question_id);
+      } else {
+        // If no new question is returned, clear lastQuestionId
+        // This is important so future *non-answer* inputs don't try to save an answer
+        setLastQuestionId(null);
+      }
+      // <<< END ADDED LINES >>>
+
       setMessages(newMessages);
 
     } catch (error) {
@@ -141,7 +147,6 @@ function App() {
       setIsLoading(false);
     }
   };
-
   const generateReport = async () => {
     if (messages.length === 0) {
       alert('Please have a conversation before generating a report.');
